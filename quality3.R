@@ -1,0 +1,66 @@
+#导入数据
+redd=read.csv('winequality-red.csv')#数据框
+red=as.matrix(redd)#整个数据(矩阵)
+X_data=red[,1:11]#11原指标
+quality=red[,12]#结果
+#划分训练集和测试集(按分类变量占比划分)
+library(caret);library(lattice)
+set.seed(2)
+sub=createDataPartition(redd$quality,p=0.8,list=F,times=1)
+red_train=redd[sub,];dim(red_train)
+red_test=redd[-sub,];dim(red_test)
+#自变量标准化
+red_train_stand=scale(red_train[,1:11])
+#测试集中的相关系数
+A_train=cor(red_train[,1:11])
+B_train=cor(red_train[,1:11],red_train[,12])
+#建立AIC和BIC初始化矩阵
+aic0=matrix(0,1000,12)
+bic0=matrix(0,1000,12)
+colnames(aic0)=c('(Intercept)','fixed.acidity','volatile.acidity','citric.acid','residual.sugar','chlorides','free.sulfur.dioxide','total.sulfur.dioxide','density','pH','sulphates','alcohol')
+colnames(bic0)=c('(Intercept)','fixed.acidity','volatile.acidity','citric.acid','residual.sugar','chlorides','free.sulfur.dioxide','total.sulfur.dioxide','density','pH','sulphates','alcohol')
+#给quality加噪声变为连续型变量
+for(i in 1:1000){
+  #对quality进行加噪声处理
+  wave=rnorm(n=1281,mean=0,sd=1)
+  quality=red_train[,12]+wave
+  red_train_end=cbind(red_train_stand,quality)
+  red_end=as.data.frame(red_train_end)#训练集中自变量标准化+质量加噪声后的数据框
+  #AIC
+  tlm_AIC=lm(quality~.,data=red_end)
+  summary(tlm_AIC)#11维变量线性回归
+  tstep_AIC=step(tlm_AIC,trace=0)
+  summary(tstep_AIC)#逐步回归分析
+  aic0[i,names(tstep_AIC$coefficients)]=tstep_AIC$coefficients
+  #BIC
+  n=length(red_end[,1])
+  tlm_BIC=lm(quality~.,data=red_end)
+  summary(tlm_BIC)#11维变量线性回归
+  tstep_BIC=step(tlm_BIC,k=log (n),trace=0)
+  summary(tstep_BIC)#逐步回归分析
+  bic0[i,names(tstep_BIC$coefficients)]=tstep_BIC$coefficients
+}
+#训练集的均值和方差
+mean_train=apply(red_train[,1:11],2,mean)
+sd_train=apply(red_train[,1:11],2,sd)
+mean_train=matrix(rep(mean_train,318),318,11,byrow=TRUE)
+sd_train=matrix(rep(sd_train,318),318,11,byrow=TRUE)
+colnames(mean_train)=c('fixed.acidity','volatile.acidity','citric.acid','residual.sugar','chlorides','free.sulfur.dioxide','total.sulfur.dioxide','density','pH','sulphates','alcohol')
+colnames(sd_train)=c('fixed.acidity','volatile.acidity','citric.acid','residual.sugar','chlorides','free.sulfur.dioxide','total.sulfur.dioxide','density','pH','sulphates','alcohol')
+#测试集中自变量标准化
+red_test_stand=(red_test[,1:11]-mean_train)/sd_train
+red_test_stand=cbind(red_test_stand,red_test[,12])
+#调参
+beta_aic=apply(aic0,2,mean)
+beta_bic=apply(bic0,2,mean)
+#测试集选择模型
+#ACI
+beta_aic=matrix(rep(beta_aic,318),318,12,byrow=TRUE)
+qualitya_ba=beta_aic[,1]+red_test_stand[,1]*beta_aic[,2]+red_test_stand[,2]*beta_aic[,3]+red_test_stand[,3]*beta_aic[,4]+red_test_stand[,4]*beta_aic[,5]+red_test_stand[,5]*beta_aic[,6]+red_test_stand[,6]*beta_aic[,7]+red_test_stand[,7]*beta_aic[,8]+red_test_stand[,8]*beta_aic[,9]+red_test_stand[,10]*beta_aic[,11]+red_test_stand[,11]*beta_aic[,12]
+error_aic=abs(qualitya_ba-red_test_stand[,12])
+target_aic=sum(error_aic^2)
+#BIC
+beta_bic=matrix(rep(beta_bic,318),318,12,byrow=TRUE)
+qualityb_ba=beta_bic[,1]+red_test_stand[,1]*beta_bic[,2]+red_test_stand[,2]*beta_bic[,3]+red_test_stand[,3]*beta_bic[,4]+red_test_stand[,4]*beta_bic[,5]+red_test_stand[,5]*beta_bic[,6]+red_test_stand[,6]*beta_bic[,7]+red_test_stand[,7]*beta_bic[,8]+red_test_stand[,8]*beta_bic[,9]+red_test_stand[,10]*beta_bic[,11]+red_test_stand[,11]*beta_bic[,12]
+error_bic=abs(qualityb_ba-red_test_stand[,12])
+target_bic=sum(error_bic^2)
